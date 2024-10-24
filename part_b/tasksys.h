@@ -5,6 +5,10 @@
 #include <vector>
 #include <thread>
 #include <set>
+#include <mutex>
+#include <cstdio>
+#include <atomic>
+#include <condition_variable>
 
 #include "itasksys.h"
 
