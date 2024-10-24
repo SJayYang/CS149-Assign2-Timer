@@ -3,6 +3,7 @@
 #include <queue>
 #include <map>
 #include <vector>
+#include <thread>
 
 #include "itasksys.h"
 
@@ -67,7 +68,7 @@ struct BulkTask {
 };
 
 struct SubTask {
-    int subTaskID;
+    std::atomic<int> subTaskID;
     int taskID;
 };
 
@@ -86,10 +87,13 @@ class TaskSystemParallelThreadPoolSleeping: public ITaskSystem {
         TaskID runAsyncWithDeps(IRunnable* runnable, int num_total_tasks,
                                 const std::vector<TaskID>& deps);
         void sync();
+        void runningThreads();
     private:
         std::queue<SubTask> readyQueue;
         std::atomic<int> taskIDCounter;
         std::map<TaskID, BulkTask*> bulkTasks;
+        int numThreads;
+        std::thread* threads;
 };
 
 #endif

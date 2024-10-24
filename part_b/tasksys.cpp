@@ -128,9 +128,18 @@ const char* TaskSystemParallelThreadPoolSleeping::name() {
 
 TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int num_threads): ITaskSystem(num_threads) {
     taskIDCounter = 0;
+    numThreads = num_threads;
+    threads = new std::thread[numThreads];
+    for (int i = 0; i < numThreads; i++) {
+        threads[i] = std::thread(&TaskSystemParallelThreadPoolSleeping::runningThreads, this);
+    }
 }
 
 TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
+}
+
+void TaskSystemParallelThreadPoolSleeping::runningThreads() {   
+    return;
 }
 
 void TaskSystemParallelThreadPoolSleeping::run(IRunnable* runnable, int num_total_tasks) {
