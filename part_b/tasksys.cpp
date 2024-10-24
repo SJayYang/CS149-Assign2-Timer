@@ -136,12 +136,7 @@ TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int n
 }
 
 TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
-    //
-    // TODO: CS149 student implementations may decide to perform cleanup
-    // operations (such as thread pool shutdown construction) here.
-    // Implementations are free to add new class member variables
-    // (requiring changes to tasksys.h).
-    //
+    taskIDCounter = 0;
 }
 
 void TaskSystemParallelThreadPoolSleeping::run(IRunnable* runnable, int num_total_tasks) {
@@ -162,15 +157,21 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
                                                     const std::vector<TaskID>& deps) {
 
 
-    //
-    // TODO: CS149 students will implement this method in Part B.
-    //
-
+	// No dependencies
+    int curTaskID = taskIDCounter;
+    if (deps.empty()) {
+        readyQueue.push(curTaskID);
+    }
+    // Dependencies
+    else {
+        dependencyGraph[curTaskID] = deps;
+    }
+    taskIDCounter++;
     for (int i = 0; i < num_total_tasks; i++) {
         runnable->runTask(i, num_total_tasks);
     }
+    return curTaskID;
 
-    return 0;
 }
 
 void TaskSystemParallelThreadPoolSleeping::sync() {

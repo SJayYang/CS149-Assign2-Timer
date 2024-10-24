@@ -102,7 +102,6 @@ class TaskSystemParallelThreadPoolSleeping: public ITaskSystem {
         std::condition_variable* cv1;
         std::condition_variable* cv2;
         bool finished;
-        int runningCount;
         IRunnable* globalRunnable;
 };
 

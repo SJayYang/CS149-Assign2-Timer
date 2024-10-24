@@ -1,5 +1,8 @@
 #ifndef _TASKSYS_H
 #define _TASKSYS_H
+#include <queue>
+#include <map>
+#include <vector>
 
 #include "itasksys.h"
 
@@ -68,6 +71,10 @@ class TaskSystemParallelThreadPoolSleeping: public ITaskSystem {
         TaskID runAsyncWithDeps(IRunnable* runnable, int num_total_tasks,
                                 const std::vector<TaskID>& deps);
         void sync();
+    private:
+        std::queue<TaskID> readyQueue;
+        std::map<TaskID, std::vector<TaskID>> dependencyGraph;
+        std::atomic<int> taskIDCounter;
 };
 
 #endif
