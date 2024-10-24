@@ -4,6 +4,7 @@
 #include <map>
 #include <vector>
 #include <thread>
+#include <set>
 
 #include "itasksys.h"
 
@@ -63,7 +64,7 @@ struct BulkTask {
     std::atomic<int> subTaskCounter;
     IRunnable* taskRunnable;
     // keep either dependencies on vector, or just number of tasks is fine
-    std::vector<TaskID> dependencies;
+    std::atomic<int> dependencies;
     std::vector<TaskID> dependsOn;
 };
 
@@ -88,12 +89,15 @@ class TaskSystemParallelThreadPoolSleeping: public ITaskSystem {
                                 const std::vector<TaskID>& deps);
         void sync();
         void runningThreads();
+        void signallingThread();
     private:
         std::queue<SubTask> readyQueue;
         std::atomic<int> taskIDCounter;
+        std::atomic<int> tasksCompleted;
         std::map<TaskID, BulkTask*> bulkTasks;
         int numThreads;
         std::thread* threads;
+        std::set<TaskID> finished;
 };
 
 #endif

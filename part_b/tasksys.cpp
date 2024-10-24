@@ -128,6 +128,7 @@ const char* TaskSystemParallelThreadPoolSleeping::name() {
 
 TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int num_threads): ITaskSystem(num_threads) {
     taskIDCounter = 0;
+    tasksCompleted = 0;
     numThreads = num_threads;
     threads = new std::thread[numThreads];
     for (int i = 0; i < numThreads; i++) {
@@ -139,6 +140,13 @@ TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
 }
 
 void TaskSystemParallelThreadPoolSleeping::runningThreads() {   
+    // while (queue is empty) {cv.wait(lock)}
+
+    //add to finish
+    return;
+}
+
+void TaskSystemParallelThreadPoolSleeping::signallingThread(){
     return;
 }
 
@@ -151,11 +159,23 @@ void TaskSystemParallelThreadPoolSleeping::run(IRunnable* runnable, int num_tota
 TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnable, int num_total_tasks,
                                                     const std::vector<TaskID>& deps) {
 
-
+    if(deps.size() == 0){
+        // add it to the queue that can do work
+        // Wake up queueingThread
+        
+    }
     int curTaskID = taskIDCounter;
     struct BulkTask* curTask = new BulkTask; 
     curTask->taskID = curTaskID;
-    curTask->dependencies = deps;
+
+    int numDependenciesTask = deps.size();
+	for (const TaskID& i : deps) {
+        if (finished.find(i) != finished.end()) {
+            numDependenciesTask--;
+        }
+    }
+
+    curTask->dependencies = numDependenciesTask;
     curTask->numTotalTasks = num_total_tasks;
     curTask->subTaskCounter = 0;
     curTask->taskRunnable = runnable;
