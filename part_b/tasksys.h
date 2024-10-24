@@ -66,10 +66,11 @@ struct BulkTask {
     // keep either dependencies on vector, or just number of tasks is fine
     std::atomic<int> dependencies;
     std::vector<TaskID> dependsOn;
+    std::atomic<bool> taskFinished;
 };
 
 struct SubTask {
-    std::atomic<int> subTaskID;
+    int subTaskID;
     int taskID;
 };
 
@@ -92,12 +93,17 @@ class TaskSystemParallelThreadPoolSleeping: public ITaskSystem {
         void signallingThread();
     private:
         std::queue<SubTask> readyQueue;
+        std::vector<TaskID> notReady;
         std::atomic<int> taskIDCounter;
         std::atomic<int> tasksCompleted;
         std::map<TaskID, BulkTask*> bulkTasks;
         int numThreads;
         std::thread* threads;
-        std::set<TaskID> finished;
+        bool finishAll;
+        std::mutex* readyQueueMutex;
+        std::mutex* notReadyMutex;
+        std::condition_variable *readyQueueCv;
+        std::condition_variable *notReadyCv;
 };
 
 #endif

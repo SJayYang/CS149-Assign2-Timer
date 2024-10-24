@@ -134,13 +134,31 @@ TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int n
     for (int i = 0; i < numThreads; i++) {
         threads[i] = std::thread(&TaskSystemParallelThreadPoolSleeping::runningThreads, this);
     }
+    readyQueueMutex = new std::mutex();
+    readyQueueCv = new std::condition_variable();
 }
 
 TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
+    finishAll = true;
 }
 
 void TaskSystemParallelThreadPoolSleeping::runningThreads() {   
-    // while (queue is empty) {cv.wait(lock)}
+    while(!finishAll){
+        if (readyQueue.empty()) {
+            std::unique_lock<std::mutex> readyQueueLock(*readyQueueMutex);
+            readyQueueCv->wait(readyQueueLock, [this] { return !readyQueue.empty(); });
+        }
+        readyQueueMutex->lock();
+        struct SubTask current = readyQueue.front();
+        readyQueue.pop();
+        readyQueueMutex->unlock();
+        struct BulkTask* curBulkTask = bulkTasks[current.taskID];
+        curBulkTask->taskRunnable->runTask(current.subTaskID, curBulkTask->numTotalTasks);
+        if (current.subTaskID == curBulkTask->numTotalTasks) {
+            tasksCompleted++;
+            curBulkTask->taskFinished = true;
+        }
+    }
 
     //add to finish
     return;
@@ -159,18 +177,13 @@ void TaskSystemParallelThreadPoolSleeping::run(IRunnable* runnable, int num_tota
 TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnable, int num_total_tasks,
                                                     const std::vector<TaskID>& deps) {
 
-    if(deps.size() == 0){
-        // add it to the queue that can do work
-        // Wake up queueingThread
-        
-    }
     int curTaskID = taskIDCounter;
     struct BulkTask* curTask = new BulkTask; 
     curTask->taskID = curTaskID;
 
     int numDependenciesTask = deps.size();
 	for (const TaskID& i : deps) {
-        if (finished.find(i) != finished.end()) {
+        if (bulkTasks[i]->taskFinished == true) {
             numDependenciesTask--;
         }
     }
@@ -179,7 +192,24 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
     curTask->numTotalTasks = num_total_tasks;
     curTask->subTaskCounter = 0;
     curTask->taskRunnable = runnable;
+    curTask->taskFinished = false;
     bulkTasks[curTaskID] = curTask;
+
+    if (deps.size() == 0) {
+        struct SubTask newSubTask;
+        newSubTask.taskID = curTaskID;
+
+        for (int i = 0; i < num_total_tasks; i++) {
+            newSubTask.subTaskID = i;
+            readyQueue.push(newSubTask);
+        }
+
+        taskIDCounter++;
+        return curTaskID;
+    }
+    else {
+        notReady.push_back(curTaskID);
+    }
 
     printf("taskID, %d\n", bulkTasks[curTaskID]->taskID);
 
