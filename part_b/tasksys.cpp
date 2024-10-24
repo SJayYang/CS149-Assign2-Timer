@@ -157,16 +157,18 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
                                                     const std::vector<TaskID>& deps) {
 
 
-	// No dependencies
     int curTaskID = taskIDCounter;
-    if (deps.empty()) {
-        readyQueue.push(curTaskID);
-    }
-    // Dependencies
-    else {
-        dependencyGraph[curTaskID] = deps;
-    }
+    struct BulkTask curTask; 
+    curTask.taskID = curTaskID;
+    curTask.dependencies = deps;
+    curTask.numTotalTasks = num_total_tasks;
     taskIDCounter++;
+
+    // Add this task to depends on in the bulkTasks
+	for (const TaskID& i : deps) {
+        bulkTasks[i].dependsOn.push_back(curTaskID);
+    }
+
     for (int i = 0; i < num_total_tasks; i++) {
         runnable->runTask(i, num_total_tasks);
     }
@@ -176,9 +178,7 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
 
 void TaskSystemParallelThreadPoolSleeping::sync() {
 
-    //
-    // TODO: CS149 students will modify the implementation of this method in Part B.
-    //
+    // Do you just call join here? 
 
     return;
 }

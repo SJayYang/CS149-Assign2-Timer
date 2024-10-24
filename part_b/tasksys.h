@@ -56,6 +56,19 @@ class TaskSystemParallelThreadPoolSpinning: public ITaskSystem {
         void sync();
 };
 
+struct BulkTask {
+    int taskID;
+    int numTotalTasks;
+    // keep either dependencies on vector, or just number of tasks is fine
+    std::vector<TaskID> dependencies;
+    std::vector<TaskID> dependsOn;
+};
+
+struct SubTask {
+    int subTaskID;
+    int taskID;
+};
+
 /*
  * TaskSystemParallelThreadPoolSleeping: This class is the student's
  * optimized implementation of a parallel task execution engine that uses
@@ -72,9 +85,9 @@ class TaskSystemParallelThreadPoolSleeping: public ITaskSystem {
                                 const std::vector<TaskID>& deps);
         void sync();
     private:
-        std::queue<TaskID> readyQueue;
-        std::map<TaskID, std::vector<TaskID>> dependencyGraph;
+        std::queue<SubTask> readyQueue;
         std::atomic<int> taskIDCounter;
+        std::map<TaskID, BulkTask> bulkTasks;
 };
 
 #endif
