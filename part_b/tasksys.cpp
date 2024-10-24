@@ -127,16 +127,10 @@ const char* TaskSystemParallelThreadPoolSleeping::name() {
 }
 
 TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int num_threads): ITaskSystem(num_threads) {
-    //
-    // TODO: CS149 student implementations may decide to perform setup
-    // operations (such as thread pool construction) here.
-    // Implementations are free to add new class member variables
-    // (requiring changes to tasksys.h).
-    //
+    taskIDCounter = 0;
 }
 
 TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
-    taskIDCounter = 0;
 }
 
 void TaskSystemParallelThreadPoolSleeping::run(IRunnable* runnable, int num_total_tasks) {
@@ -158,20 +152,25 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
 
 
     int curTaskID = taskIDCounter;
-    struct BulkTask curTask; 
-    curTask.taskID = curTaskID;
-    curTask.dependencies = deps;
-    curTask.numTotalTasks = num_total_tasks;
-    taskIDCounter++;
+    struct BulkTask* curTask = new BulkTask; 
+    curTask->taskID = curTaskID;
+    curTask->dependencies = deps;
+    curTask->numTotalTasks = num_total_tasks;
+    curTask->subTaskCounter = 0;
+    curTask->taskRunnable = runnable;
+    bulkTasks[curTaskID] = curTask;
+
+    printf("taskID, %d\n", bulkTasks[curTaskID]->taskID);
 
     // Add this task to depends on in the bulkTasks
 	for (const TaskID& i : deps) {
-        bulkTasks[i].dependsOn.push_back(curTaskID);
+        bulkTasks[i]->dependsOn.push_back(curTaskID);
     }
 
     for (int i = 0; i < num_total_tasks; i++) {
         runnable->runTask(i, num_total_tasks);
     }
+    taskIDCounter++;
     return curTaskID;
 
 }
@@ -179,6 +178,5 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
 void TaskSystemParallelThreadPoolSleeping::sync() {
 
     // Do you just call join here? 
-
     return;
 }
