@@ -190,7 +190,6 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
 
     curTask->dependencies = numDependenciesTask;
     curTask->numTotalTasks = num_total_tasks;
-    curTask->subTaskCounter = 0;
     curTask->taskRunnable = runnable;
     curTask->taskFinished = false;
     bulkTasks[curTaskID] = curTask;
@@ -218,12 +217,8 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
         bulkTasks[i]->dependsOn.push_back(curTaskID);
     }
 
-    for (int i = 0; i < num_total_tasks; i++) {
-        runnable->runTask(i, num_total_tasks);
-    }
     taskIDCounter++;
     return curTaskID;
-
 }
 
 void TaskSystemParallelThreadPoolSleeping::sync() {

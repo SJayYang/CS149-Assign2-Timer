@@ -61,7 +61,6 @@ class TaskSystemParallelThreadPoolSpinning: public ITaskSystem {
 struct BulkTask {
     int taskID;
     int numTotalTasks;
-    std::atomic<int> subTaskCounter;
     IRunnable* taskRunnable;
     // keep either dependencies on vector, or just number of tasks is fine
     std::atomic<int> dependencies;
