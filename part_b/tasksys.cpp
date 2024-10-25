@@ -157,7 +157,8 @@ void TaskSystemParallelThreadPoolSleeping::runningThreads() {
         {
             if (readyQueue.empty()) {
                 printf("readyQueue is not filled, waiting...\n");
-                if (taskIDCounter == tasksCompleted) {
+                printf("tasksCompleted: %d, taskIDCounter %d\n", int(tasksCompleted), int(taskIDCounter));
+                if (tasksCompleted > 0 && taskIDCounter == tasksCompleted) {
                     printf("Finished all tasks, notifying...\n");
                     syncCv->notify_all();
                 }
@@ -166,19 +167,19 @@ void TaskSystemParallelThreadPoolSleeping::runningThreads() {
                 printf("readyQueueCv woken up...\n");
             }
             if (finishAll) {
-                printf("finsihAll set, returning ...\n");
+                printf("finishedAll, returning ...\n");
                 return;
             }
         }
-        printf("waiting for readyQueueMutex\n");
         readyQueueMutex->lock();
         struct SubTask current = readyQueue.front();
-        printf("On Task %d, subtask %d", current.taskID, current.subTaskID);
+        printf("On Task %d, subtask %d\n", current.taskID, current.subTaskID);
         readyQueue.pop();
         readyQueueMutex->unlock();
         struct BulkTask* curBulkTask = bulkTasks[current.taskID];
         curBulkTask->taskRunnable->runTask(current.subTaskID, curBulkTask->numTotalTasks);
-        if (current.subTaskID == curBulkTask->numTotalTasks - 1) {
+        curBulkTask->subTaskCompleted++;
+        if (curBulkTask->subTaskCompleted == curBulkTask->numTotalTasks) {
             tasksCompleted++;
             curBulkTask->taskFinished = true;
             for (const TaskID& i : curBulkTask->dependsOn) {
@@ -232,26 +233,23 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
     curTask->numTotalTasks = num_total_tasks;
     curTask->taskRunnable = runnable;
     curTask->taskFinished = false;
+    curTask->subTaskCompleted = 0;
     bulkTasks[curTaskID] = curTask;
 
     printf("taskID, %d\n", bulkTasks[curTaskID]->taskID);
     if (deps.size() == 0) {
-        printf("adding taskID %d to readyQueue\n", bulkTasks[curTaskID]->taskID);
         addSubTasksQueue(curTaskID);
         taskIDCounter++;
         return curTaskID;
     }
     else {
-        printf("adding taskID %d to notReady queue\n", bulkTasks[curTaskID]->taskID);
         notReady.insert(curTaskID);
     }
 
     // Add this task to depends on in the bulkTasks
-    printf("Adding task to dependsOn\n");
 	for (const TaskID& i : deps) {
         bulkTasks[i]->dependsOn.push_back(curTaskID);
     }
-    printf("Incrementing taskIDCounter");
     taskIDCounter++;
     return curTaskID;
 }

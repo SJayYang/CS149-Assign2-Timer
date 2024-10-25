@@ -67,6 +67,7 @@ struct BulkTask {
     int numTotalTasks;
     IRunnable* taskRunnable;
     // keep either dependencies on vector, or just number of tasks is fine
+    std::atomic<int> subTaskCompleted;
     std::atomic<int> dependencies;
     std::vector<TaskID> dependsOn;
     std::atomic<bool> taskFinished;
