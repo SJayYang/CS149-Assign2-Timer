@@ -111,6 +111,7 @@ class TaskSystemParallelThreadPoolSleeping: public ITaskSystem {
         std::condition_variable *readyQueueCv;
         std::condition_variable *notReadyCv;
         std::condition_variable *syncCv;
+        std::atomic<bool> syncNow;
 };
 
 #endif
