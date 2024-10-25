@@ -132,12 +132,13 @@ TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int n
     numThreads = num_threads;
     threads = new std::thread[numThreads];
     finishAll = false;
-    for (int i = 0; i < numThreads; i++) {
-        threads[i] = std::thread(&TaskSystemParallelThreadPoolSleeping::runningThreads, this);
-    }
     readyQueueMutex = new std::mutex();
     readyQueueCvMutex = new std::mutex();
     readyQueueCv = new std::condition_variable();
+
+    for (int i = 0; i < numThreads; i++) {
+        threads[i] = std::thread(&TaskSystemParallelThreadPoolSleeping::runningThreads, this);
+    }
 }
 
 TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
@@ -151,7 +152,7 @@ void TaskSystemParallelThreadPoolSleeping::runningThreads() {
         {
             if (readyQueue.empty()) {
                 std::unique_lock<std::mutex> readyQueueLock(*readyQueueMutex);
-                readyQueueCv->wait(readyQueueLock, [this] { return !readyQueue.empty(); });
+                readyQueueCv->wait(readyQueueLock, [this] { return !readyQueue.empty() || finishAll; });
             }
             if (finishAll) {
                 return;
