@@ -158,14 +158,16 @@ void TaskSystemParallelThreadPoolSleeping::runningThreads() {
             syncCv->notify_all();
         }
         std::unique_lock<std::mutex> readyQueueLock(*readyQueueMutex);
-        readyQueueCv->wait(readyQueueLock, [this] { return !readyQueue.empty() || finishAll; });
+        if (readyQueue.empty()) {
+            readyQueueCv->wait(readyQueueLock, [this] { return !readyQueue.empty() || finishAll; });
+        }
 
         if (finishAll) {
             return;
         }
 
         struct SubTask current = readyQueue.front();
-        printf("On Task %d, subtask %d\n", current.taskID, current.subTaskID);
+        // printf("On Task %d, subtask %d\n", current.taskID, current.subTaskID);
         readyQueue.pop();
         readyQueueLock.unlock();
         struct BulkTask* curBulkTask = bulkTasks[current.taskID];
@@ -197,7 +199,7 @@ void TaskSystemParallelThreadPoolSleeping::addSubTasksQueue(TaskID curTaskID) {
 
     for (int i = 0; i < bulkTasks[curTaskID]->numTotalTasks; i++) {
         newSubTask.subTaskID = i;
-        printf("Adding TaskID %d, subTaskID %d\n", newSubTask.taskID, newSubTask.subTaskID);
+        // printf("Adding TaskID %d, subTaskID %d\n", newSubTask.taskID, newSubTask.subTaskID);
         readyQueueMutex->lock();
         readyQueue.push(newSubTask);
         readyQueueMutex->unlock();
