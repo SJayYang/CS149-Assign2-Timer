@@ -134,7 +134,9 @@ TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int n
     finishAll = false;
     readyQueueMutex = new std::mutex();
     readyQueueCvMutex = new std::mutex();
+    syncMutex = new std::mutex();
     readyQueueCv = new std::condition_variable();
+    syncCv = new std::condition_variable();
 
     for (int i = 0; i < numThreads; i++) {
         threads[i] = std::thread(&TaskSystemParallelThreadPoolSleeping::runningThreads, this);
@@ -144,6 +146,9 @@ TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int n
 TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
     finishAll = true;
     readyQueueCv->notify_all();
+    for (int i = 0; i < numThreads; i++) {
+        threads[i].join();
+    }
     delete[] threads;
 }
 
@@ -151,15 +156,24 @@ void TaskSystemParallelThreadPoolSleeping::runningThreads() {
     while(!finishAll){
         {
             if (readyQueue.empty()) {
+                printf("readyQueue is not filled, waiting...\n");
+                if (taskIDCounter == tasksCompleted) {
+                    printf("Finished all tasks, notifying...\n");
+                    syncCv->notify_all();
+                }
                 std::unique_lock<std::mutex> readyQueueLock(*readyQueueMutex);
                 readyQueueCv->wait(readyQueueLock, [this] { return !readyQueue.empty() || finishAll; });
+                printf("readyQueueCv woken up...\n");
             }
             if (finishAll) {
+                printf("finsihAll set, returning ...\n");
                 return;
             }
         }
+        printf("waiting for readyQueueMutex\n");
         readyQueueMutex->lock();
         struct SubTask current = readyQueue.front();
+        printf("On Task %d, subtask %d", current.taskID, current.subTaskID);
         readyQueue.pop();
         readyQueueMutex->unlock();
         struct BulkTask* curBulkTask = bulkTasks[current.taskID];
@@ -194,6 +208,7 @@ void TaskSystemParallelThreadPoolSleeping::addSubTasksQueue(TaskID curTaskID) {
 
     for (int i = 0; i < bulkTasks[curTaskID]->numTotalTasks; i++) {
         newSubTask.subTaskID = i;
+        printf("Adding TaskID %d, subTaskID %d\n", newSubTask.taskID, newSubTask.subTaskID);
         readyQueueMutex->lock();
         readyQueue.push(newSubTask);
         readyQueueMutex->unlock();
@@ -219,28 +234,31 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
     curTask->taskFinished = false;
     bulkTasks[curTaskID] = curTask;
 
+    printf("taskID, %d\n", bulkTasks[curTaskID]->taskID);
     if (deps.size() == 0) {
+        printf("adding taskID %d to readyQueue\n", bulkTasks[curTaskID]->taskID);
         addSubTasksQueue(curTaskID);
         taskIDCounter++;
         return curTaskID;
     }
     else {
+        printf("adding taskID %d to notReady queue\n", bulkTasks[curTaskID]->taskID);
         notReady.insert(curTaskID);
     }
 
-    printf("taskID, %d\n", bulkTasks[curTaskID]->taskID);
-
     // Add this task to depends on in the bulkTasks
+    printf("Adding task to dependsOn\n");
 	for (const TaskID& i : deps) {
         bulkTasks[i]->dependsOn.push_back(curTaskID);
     }
-
+    printf("Incrementing taskIDCounter");
     taskIDCounter++;
     return curTaskID;
 }
 
 void TaskSystemParallelThreadPoolSleeping::sync() {
-    for (int i = 0; i < numThreads; i++) {
-        threads[i].join();
-    }
+    std::unique_lock<std::mutex> syncLock(*syncMutex);
+    printf("Waiting for lock");
+    syncCv->wait(syncLock, [this] { return notReady.empty() && readyQueue.empty(); });
+    printf("Synclock done");
 }
