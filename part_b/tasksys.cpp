@@ -131,19 +131,18 @@ TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int n
     tasksCompleted = 0;
     numThreads = num_threads;
     threads = new std::thread[numThreads];
+    finishAll = false;
     for (int i = 0; i < numThreads; i++) {
         threads[i] = std::thread(&TaskSystemParallelThreadPoolSleeping::runningThreads, this);
     }
     readyQueueMutex = new std::mutex();
+    readyQueueCvMutex = new std::mutex();
     readyQueueCv = new std::condition_variable();
 }
 
 TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
     finishAll = true;
     readyQueueCv->notify_all();
-    for (int i = 0; i < numThreads; i++) {
-        threads[i].join();
-    }
     delete[] threads;
 }
 
@@ -164,7 +163,7 @@ void TaskSystemParallelThreadPoolSleeping::runningThreads() {
         readyQueueMutex->unlock();
         struct BulkTask* curBulkTask = bulkTasks[current.taskID];
         curBulkTask->taskRunnable->runTask(current.subTaskID, curBulkTask->numTotalTasks);
-        if (current.subTaskID == curBulkTask->numTotalTasks) {
+        if (current.subTaskID == curBulkTask->numTotalTasks - 1) {
             tasksCompleted++;
             curBulkTask->taskFinished = true;
             for (const TaskID& i : curBulkTask->dependsOn) {
@@ -176,8 +175,6 @@ void TaskSystemParallelThreadPoolSleeping::runningThreads() {
             }
         }
     }
-
-    return;
 }
 
 void TaskSystemParallelThreadPoolSleeping::signallingThread(){
@@ -242,7 +239,7 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
 }
 
 void TaskSystemParallelThreadPoolSleeping::sync() {
-
-    // Do you just call join here? 
-    return;
+    for (int i = 0; i < numThreads; i++) {
+        threads[i].join();
+    }
 }
