@@ -156,8 +156,6 @@ void TaskSystemParallelThreadPoolSleeping::runningThreads() {
     while(!finishAll){
         {
             if (readyQueue.empty()) {
-                printf("readyQueue is not filled, waiting...\n");
-                printf("tasksCompleted: %d, taskIDCounter %d\n", int(tasksCompleted), int(taskIDCounter));
                 if (tasksCompleted > 0 && taskIDCounter == tasksCompleted) {
                     printf("Finished all tasks, notifying...\n");
                     syncCv->notify_all();
@@ -193,10 +191,6 @@ void TaskSystemParallelThreadPoolSleeping::runningThreads() {
     }
 }
 
-void TaskSystemParallelThreadPoolSleeping::signallingThread(){
-    return;
-}
-
 void TaskSystemParallelThreadPoolSleeping::run(IRunnable* runnable, int num_total_tasks) {
 
 	runAsyncWithDeps(runnable, num_total_tasks, std::vector<TaskID>());
@@ -214,6 +208,7 @@ void TaskSystemParallelThreadPoolSleeping::addSubTasksQueue(TaskID curTaskID) {
         readyQueue.push(newSubTask);
         readyQueueMutex->unlock();
     }
+    readyQueueCv->notify_all();
 }
 TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnable, int num_total_tasks,
                                                     const std::vector<TaskID>& deps) {
@@ -236,7 +231,7 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
     curTask->subTaskCompleted = 0;
     bulkTasks[curTaskID] = curTask;
 
-    printf("taskID, %d\n", bulkTasks[curTaskID]->taskID);
+    // printf("taskID, %d\n", bulkTasks[curTaskID]->taskID);
     if (deps.size() == 0) {
         addSubTasksQueue(curTaskID);
         taskIDCounter++;
@@ -256,7 +251,7 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
 
 void TaskSystemParallelThreadPoolSleeping::sync() {
     std::unique_lock<std::mutex> syncLock(*syncMutex);
-    printf("Waiting for lock");
+    printf("Waiting for sync lock\n");
     syncCv->wait(syncLock, [this] { return notReady.empty() && readyQueue.empty(); });
-    printf("Synclock done");
+    printf("sync lock done\n");
 }
