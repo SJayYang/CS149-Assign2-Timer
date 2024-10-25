@@ -94,9 +94,10 @@ class TaskSystemParallelThreadPoolSleeping: public ITaskSystem {
         void sync();
         void runningThreads();
         void signallingThread();
+        void addSubTasksQueue(TaskID i);
     private:
         std::queue<SubTask> readyQueue;
-        std::vector<TaskID> notReady;
+        std::set<TaskID> notReady;
         std::atomic<int> taskIDCounter;
         std::atomic<int> tasksCompleted;
         std::map<TaskID, BulkTask*> bulkTasks;

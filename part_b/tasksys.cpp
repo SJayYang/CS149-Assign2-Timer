@@ -140,13 +140,23 @@ TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int n
 
 TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
     finishAll = true;
+    readyQueueCv->notify_all();
+    for (int i = 0; i < numThreads; i++) {
+        threads[i].join();
+    }
+    delete[] threads;
 }
 
 void TaskSystemParallelThreadPoolSleeping::runningThreads() {   
     while(!finishAll){
-        if (readyQueue.empty()) {
-            std::unique_lock<std::mutex> readyQueueLock(*readyQueueMutex);
-            readyQueueCv->wait(readyQueueLock, [this] { return !readyQueue.empty(); });
+        {
+            if (readyQueue.empty()) {
+                std::unique_lock<std::mutex> readyQueueLock(*readyQueueMutex);
+                readyQueueCv->wait(readyQueueLock, [this] { return !readyQueue.empty(); });
+            }
+            if (finishAll) {
+                return;
+            }
         }
         readyQueueMutex->lock();
         struct SubTask current = readyQueue.front();
@@ -157,10 +167,16 @@ void TaskSystemParallelThreadPoolSleeping::runningThreads() {
         if (current.subTaskID == curBulkTask->numTotalTasks) {
             tasksCompleted++;
             curBulkTask->taskFinished = true;
+            for (const TaskID& i : curBulkTask->dependsOn) {
+                bulkTasks[i]->dependencies--;
+                if (bulkTasks[i]->dependencies == 0) {
+                    notReady.erase(i);
+                    addSubTasksQueue(i);
+                }
+            }
         }
     }
 
-    //add to finish
     return;
 }
 
@@ -174,6 +190,17 @@ void TaskSystemParallelThreadPoolSleeping::run(IRunnable* runnable, int num_tota
     sync();
 }
 
+void TaskSystemParallelThreadPoolSleeping::addSubTasksQueue(TaskID curTaskID) {
+    struct SubTask newSubTask;
+    newSubTask.taskID = curTaskID;
+
+    for (int i = 0; i < bulkTasks[curTaskID]->numTotalTasks; i++) {
+        newSubTask.subTaskID = i;
+        readyQueueMutex->lock();
+        readyQueue.push(newSubTask);
+        readyQueueMutex->unlock();
+    }
+}
 TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnable, int num_total_tasks,
                                                     const std::vector<TaskID>& deps) {
 
@@ -195,19 +222,12 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
     bulkTasks[curTaskID] = curTask;
 
     if (deps.size() == 0) {
-        struct SubTask newSubTask;
-        newSubTask.taskID = curTaskID;
-
-        for (int i = 0; i < num_total_tasks; i++) {
-            newSubTask.subTaskID = i;
-            readyQueue.push(newSubTask);
-        }
-
+        addSubTasksQueue(curTaskID);
         taskIDCounter++;
         return curTaskID;
     }
     else {
-        notReady.push_back(curTaskID);
+        notReady.insert(curTaskID);
     }
 
     printf("taskID, %d\n", bulkTasks[curTaskID]->taskID);
