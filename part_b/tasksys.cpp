@@ -154,26 +154,20 @@ TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
 
 void TaskSystemParallelThreadPoolSleeping::runningThreads() {   
     while(!finishAll){
-        {
-            if (readyQueue.empty()) {
-                if (tasksCompleted > 0 && taskIDCounter == tasksCompleted) {
-                    printf("Finished all tasks, notifying...\n");
-                    syncCv->notify_all();
-                }
-                std::unique_lock<std::mutex> readyQueueLock(*readyQueueMutex);
-                readyQueueCv->wait(readyQueueLock, [this] { return !readyQueue.empty() || finishAll; });
-                printf("readyQueueCv woken up...\n");
-            }
-            if (finishAll) {
-                printf("finishedAll, returning ...\n");
-                return;
-            }
+        if (tasksCompleted > 0 && tasksCompleted == taskIDCounter) {
+            syncCv->notify_all();
         }
-        readyQueueMutex->lock();
+        std::unique_lock<std::mutex> readyQueueLock(*readyQueueMutex);
+        readyQueueCv->wait(readyQueueLock, [this] { return !readyQueue.empty() || finishAll; });
+
+        if (finishAll) {
+            return;
+        }
+
         struct SubTask current = readyQueue.front();
         printf("On Task %d, subtask %d\n", current.taskID, current.subTaskID);
         readyQueue.pop();
-        readyQueueMutex->unlock();
+        readyQueueLock.unlock();
         struct BulkTask* curBulkTask = bulkTasks[current.taskID];
         curBulkTask->taskRunnable->runTask(current.subTaskID, curBulkTask->numTotalTasks);
         curBulkTask->subTaskCompleted++;
