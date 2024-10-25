@@ -134,7 +134,6 @@ TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int n
     finishAll = false;
     notReadyMutex = new std::mutex();
     readyQueueMutex = new std::mutex();
-    readyQueueCvMutex = new std::mutex();
     syncMutex = new std::mutex();
     readyQueueCv = new std::condition_variable();
     syncCv = new std::condition_variable();
@@ -156,11 +155,11 @@ TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
 
 void TaskSystemParallelThreadPoolSleeping::runningThreads() {   
     while(!finishAll){
-        if (syncNow && tasksCompleted == taskIDCounter) {
-            syncCv->notify_all();
-        }
         std::unique_lock<std::mutex> readyQueueLock(*readyQueueMutex);
         if (readyQueue.empty()) {
+            if (syncNow && notReady.empty() && tasksCompleted == taskIDCounter) {
+                syncCv->notify_all();
+            }
             readyQueueCv->wait(readyQueueLock, [this] { return !readyQueue.empty() || finishAll; });
         }
 
@@ -174,19 +173,24 @@ void TaskSystemParallelThreadPoolSleeping::runningThreads() {
         struct BulkTask* curBulkTask = bulkTasks[current.taskID];
         // printf("On Task %d, subtask %d, numTotalTasks %d, subTaskCounter %d\n", current.taskID, current.subTaskID, int(curBulkTask->numTotalTasks), int(curBulkTask->subTaskCompleted));
         curBulkTask->taskRunnable->runTask(current.subTaskID, curBulkTask->numTotalTasks);
+        // Possible race condition here? 
         curBulkTask->subTaskCompleted++;
         if (curBulkTask->subTaskCompleted == curBulkTask->numTotalTasks) {
-            printf("taskID %d done\n",curBulkTask->taskID);
+            // printf("taskID %d done\n",curBulkTask->taskID);
             tasksCompleted++;
             curBulkTask->taskFinished = true;
+            // printf("taskID %d taskFinished set\n",curBulkTask->taskID);
             for (const TaskID& i : curBulkTask->dependsOn) {
                 bulkTasks[i]->dependencies--;
+                printf("dependencies %d", int(bulkTasks[i]->dependencies));
                 if (bulkTasks[i]->dependencies == 0) {
                     notReadyMutex->lock();
                     notReady.erase(i);
                     notReadyMutex->unlock();
                     addSubTasksQueue(i);
+                    printf("Adding new item to queue");
                 }
+            printf("finished done loop\n");
             }
         }
     }
@@ -210,7 +214,7 @@ void TaskSystemParallelThreadPoolSleeping::addSubTasksQueue(TaskID curTaskID) {
         readyQueue.push(newSubTask);
         }
     }
-    printf("queued %d\n", curTaskID);
+    // printf("queued %d\n", curTaskID);
     readyQueueCv->notify_all();
 }
 TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnable, int num_total_tasks,
@@ -225,6 +229,9 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
 	for (const TaskID& i : deps) {
         if (bulkTasks[i]->taskFinished == true) {
             numDependenciesTask--;
+        }
+        else {
+            bulkTasks[i]->dependsOn.push_back(curTaskID);   
         }
     }
 
@@ -245,18 +252,15 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
         notReady.insert(curTaskID);
     }
 
-    // Add this task to depends on in the bulkTasks
-	for (const TaskID& i : deps) {
-        bulkTasks[i]->dependsOn.push_back(curTaskID);
-    }
     taskIDCounter++;
     return curTaskID;
 }
 
 void TaskSystemParallelThreadPoolSleeping::sync() {
     std::unique_lock<std::mutex> syncLock(*syncMutex);
-    syncNow = true;
-    // printf("waiting on syncLock\n");
-    syncCv->wait(syncLock, [this] { return notReady.empty() && readyQueue.empty(); });
-    // printf("Finished waiting on syncLock\n");
+    // syncNow = true;
+    printf("waiting on syncLock\n");
+    // put a wait variable
+    syncCv->wait(syncLock, [this] { syncNow = true; printf("notReady.empty() %d and readyQueue.empty() %d\n", notReady.empty(), readyQueue.empty()); return notReady.empty() && readyQueue.empty(); });
+    printf("Finished waiting on syncLock\n");
 }
