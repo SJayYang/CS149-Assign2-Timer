@@ -104,6 +104,7 @@ class TaskSystemParallelThreadPoolSleeping: public ITaskSystem {
         int numThreads;
         std::thread* threads;
         std::atomic<bool> finishAll;
+        std::mutex* bulkTaskMutex;
         std::mutex* readyQueueMutex;
         std::mutex* notReadyMutex;
         std::mutex* syncMutex;

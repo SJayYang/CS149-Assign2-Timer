@@ -132,6 +132,7 @@ TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int n
     numThreads = num_threads;
     threads = new std::thread[numThreads];
     finishAll = false;
+    bulkTaskMutex = new std::mutex();
     notReadyMutex = new std::mutex();
     readyQueueMutex = new std::mutex();
     syncMutex = new std::mutex();
@@ -161,46 +162,61 @@ TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
 }
 
 void TaskSystemParallelThreadPoolSleeping::runningThreads() {   
-    while(!finishAll){
-        std::unique_lock<std::mutex> readyQueueLock(*readyQueueMutex);
-        readyQueueCv->wait(readyQueueLock, [this] { return !readyQueue.empty() || finishAll; });
+    while (!finishAll) {
+        SubTask currentTask;
+        {
+            std::unique_lock<std::mutex> readyQueueLock(*readyQueueMutex);
+            readyQueueCv->wait(readyQueueLock, [this] { return !readyQueue.empty() || finishAll; });
 
-        if (finishAll) {
-            return;
+            if (finishAll) return;
+
+			if (!readyQueue.empty()) {
+                currentTask = readyQueue.front();
+                readyQueue.pop();
+            }
+            else {
+                continue;
+            }
         }
 
-        struct SubTask current = readyQueue.front();
-        readyQueue.pop();
-        readyQueueLock.unlock();
-        struct BulkTask* curBulkTask = bulkTasks[current.taskID];
-        // printf("On Task %d, subtask %d, numTotalTasks %d, subTaskCounter %d\n", current.taskID, current.subTaskID, int(curBulkTask->numTotalTasks), int(curBulkTask->subTaskCompleted));
-        curBulkTask->taskRunnable->runTask(current.subTaskID, curBulkTask->numTotalTasks);
-
+        BulkTask* curBulkTask;
         {
-        std::unique_lock<std::mutex> completeTaskLock(*syncMutex);
-        curBulkTask->subTaskCompleted++;
-        if (curBulkTask->subTaskCompleted == curBulkTask->numTotalTasks) {
-            tasksCompleted++;
+            std::unique_lock<std::mutex> bulkTasksLock(*bulkTaskMutex);
+            curBulkTask = bulkTasks[currentTask.taskID];
+        }
+
+        curBulkTask->taskRunnable->runTask(currentTask.subTaskID, curBulkTask->numTotalTasks);
+
+        if (++curBulkTask->subTaskCompleted == curBulkTask->numTotalTasks) {
             curBulkTask->taskFinished = true;
-            // printf("taskID %d taskFinished set\n",curBulkTask->taskID);
-            for (const TaskID& i : curBulkTask->dependsOn) {
-                bulkTasks[i]->dependencies--;
-                if (bulkTasks[i]->dependencies == 0) {
-                    notReadyMutex->lock();
-                    if (!notReady.empty() && notReady.find(i) != notReady.end()) {
-                        notReady.erase(i);
-                    }
-                    notReadyMutex->unlock();
-                    {
-                        std::unique_lock<std::mutex> addSubTasksQueueLock(*readyQueueMutex);
-                        addSubTasksQueue(i);
+            tasksCompleted++;
+
+            {
+                std::unique_lock<std::mutex> syncLock(*syncMutex);
+                if (tasksCompleted == taskIDCounter) {
+                    syncCv->notify_all();
+                }
+            }
+
+            std::vector<TaskID> dependenciesToQueue;
+            {
+                std::unique_lock<std::mutex> bulkTasksLock(*bulkTaskMutex);
+                for (const TaskID& dep : curBulkTask->dependsOn) {
+                    
+                    if (--bulkTasks[dep]->dependencies == 0) {
+                        dependenciesToQueue.push_back(dep);
                     }
                 }
             }
-        }
-        if (tasksCompleted == taskIDCounter) {
-            syncCv->notify_all();
-        }
+
+            for (TaskID dep : dependenciesToQueue) {
+                {
+                    std::unique_lock<std::mutex> notReadyLock(*notReadyMutex);
+                    notReady.erase(dep);  // Remove from `notReady`
+                }
+                std::unique_lock<std::mutex> subTaskLock(*readyQueueMutex);
+                addSubTasksQueue(dep);  // Add to `readyQueue`
+            }
         }
     }
 }
@@ -219,43 +235,42 @@ void TaskSystemParallelThreadPoolSleeping::addSubTasksQueue(TaskID curTaskID) {
         newSubTask.subTaskID = i;
         readyQueue.push(newSubTask);
     }
-    // printf("queued %d\n", curTaskID);
     readyQueueCv->notify_all();
 }
+
 TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnable, int num_total_tasks,
                                                     const std::vector<TaskID>& deps) {
 
-    int curTaskID = taskIDCounter;
-    struct BulkTask* curTask = new BulkTask; 
+    int curTaskID = taskIDCounter++;
+    struct BulkTask* curTask = new BulkTask;
     curTask->taskID = curTaskID;
-
-    int numDependenciesTask = deps.size();
-	for (const TaskID& i : deps) {
-        if (bulkTasks[i]->taskFinished == true) {
-            numDependenciesTask--;
-        }
-        else {
-            bulkTasks[i]->dependsOn.push_back(curTaskID);   
-        }
-    }
-
-    curTask->dependencies = numDependenciesTask;
     curTask->numTotalTasks = num_total_tasks;
     curTask->taskRunnable = runnable;
-    curTask->taskFinished = false;
     curTask->subTaskCompleted = 0;
-    bulkTasks[curTaskID] = curTask;
+    curTask->taskFinished = false;
 
-    if (deps.size() == 0) {
+    int numDependenciesTask = deps.size();
+    {
+        std::unique_lock<std::mutex> bulkTasksLock(*bulkTaskMutex);
+        for (const TaskID& dep : deps) {
+            if (bulkTasks.find(dep) != bulkTasks.end() && bulkTasks[dep]->taskFinished) {
+                numDependenciesTask--;
+            } else if (bulkTasks.find(dep) != bulkTasks.end()) {
+                bulkTasks[dep]->dependsOn.push_back(curTaskID);
+            }
+        }
+        curTask->dependencies = numDependenciesTask;
+        bulkTasks[curTaskID] = curTask;
+    }
+
+    if (numDependenciesTask == 0) {
+        std::unique_lock<std::mutex> subTaskLock(*readyQueueMutex);
         addSubTasksQueue(curTaskID);
-        taskIDCounter++;
-        return curTaskID;
-    }
-    else {
-        notReady.insert(curTaskID);
+    } else {
+        std::lock_guard<std::mutex> lock(*notReadyMutex);
+        notReady.insert(curTaskID); 
     }
 
-    taskIDCounter++;
     return curTaskID;
 }
 
