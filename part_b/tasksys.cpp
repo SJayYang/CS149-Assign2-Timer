@@ -147,11 +147,9 @@ TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int n
 TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
     finishAll = true;
     readyQueueCv->notify_all();
-    printf("Notifying all threads\n");
     for (int i = 0; i < numThreads; i++) {
         threads[i].join();
     }
-    printf("all threads joined\n");
     delete[] threads;
     delete notReadyMutex;
     delete readyQueueMutex; 
