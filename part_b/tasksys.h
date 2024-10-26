@@ -105,13 +105,10 @@ class TaskSystemParallelThreadPoolSleeping: public ITaskSystem {
         std::thread* threads;
         std::atomic<bool> finishAll;
         std::mutex* readyQueueMutex;
-        std::mutex* readyQueueCvMutex;
         std::mutex* notReadyMutex;
         std::mutex* syncMutex;
         std::condition_variable *readyQueueCv;
-        std::condition_variable *notReadyCv;
         std::condition_variable *syncCv;
-        std::atomic<bool> syncNow;
 };
 
 #endif
