@@ -62,9 +62,22 @@ typedef struct {
 */
 class YourTask : public IRunnable {
     public:
-        YourTask() {}
+        int *output_;
+        YourTask(int*output_array): output_(output_array)  {}
         ~YourTask() {}
-        void runTask(int task_id, int num_total_tasks) {}
+        void runTask(int task_id, int num_total_tasks) {
+            if(task_id % 2 == 0){
+                output_[task_id] = task_id;
+            }
+            else{
+                double result = 0.0;
+                for (int i = 0; i < 1000000; i++)
+                {
+                    result += 12 + sin(i);
+                }
+                output_[task_id] = int(result);
+            }
+        }
 };
 /*
  * Implement your test here. Call this function from a wrapper that passes in
@@ -74,19 +87,41 @@ class YourTask : public IRunnable {
 TestResults yourTest(ITaskSystem* t, bool do_async, int num_elements, int num_bulk_task_launches) {
     // TODO: initialize your input and output buffers
     int* output = new int[num_elements];
-
     // TODO: instantiate your bulk task launches
+    for (int i = 0; i<num_elements; i++) {
+        output[i] = 0;
+    }
+    std::vector<YourTask *> runnables;
+    for (int i = 0; i < num_bulk_task_launches; i++) {
+        runnables.push_back(new YourTask(output));
+    }
+
 
     // Run the test
     double start_time = CycleTimer::currentSeconds();
-    if (do_async) {
+    TaskID prev_task_id;
+    for (int i = 0; i < num_bulk_task_launches; i++) {
+        if (do_async) {
         // TODO:
         // initialize dependency vector
         // make calls to t->runAsyncWithDeps and push TaskID to dependency vector
         // t->sync() at end
-    } else {
+        std::vector<TaskID> deps;
+        if (i > 0) {
+            deps.push_back(prev_task_id);
+        }
+        prev_task_id = t->runAsyncWithDeps(
+            runnables[i], num_elements, deps);
+        }
+        else {
         // TODO: make calls to t->run
+            t->run(runnables[i], num_elements);
+        }
     }
+    if(do_async)
+        t->sync();
+
+   
     double end_time = CycleTimer::currentSeconds();
 
     // Correctness validation
@@ -94,17 +129,25 @@ TestResults yourTest(ITaskSystem* t, bool do_async, int num_elements, int num_bu
     results.passed = true;
 
     for (int i=0; i<num_elements; i++) {
-        int value = 0; // TODO: initialize value
-        for (int j=0; j<num_bulk_task_launches; j++) {
-            // TODO: update value as expected
+        int value;
+        if(i % 2 == 0){
+            value = i;
         }
-
+        else{
+            double result = 0.0;
+            for (int j = 0; j < 1000000; j++)
+            {
+                result += 12 + sin(j);
+            }
+            value = int(result);
+        }
         int expected = value;
         if (output[i] != expected) {
             results.passed = false;
-            printf("%d: %d expected=%d\n", i, output[i], expected);
+            printf("\ni value: %d: output: %d expected=%d\n", i, output[i], expected);
             break;
         }
+        
     }
     results.time = end_time - start_time;
 
@@ -1402,4 +1445,11 @@ TestResults strictGraphDepsMedium(ITaskSystem* t) {
 
 TestResults strictGraphDepsLarge(ITaskSystem* t) {
     return strictGraphDepsTestBase(t,1000,20000,0);
+}
+
+TestResults yourTest(ITaskSystem*t) {
+    return yourTest(t, false, 20, 30);
+}
+TestResults yourTestAsync(ITaskSystem*t) {
+    return yourTest(t, true, 20, 30);
 }
