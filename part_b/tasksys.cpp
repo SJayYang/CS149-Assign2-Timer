@@ -192,7 +192,7 @@ void TaskSystemParallelThreadPoolSleeping::runningThreads() {
             {
                 std::unique_lock<std::mutex> syncLock(*syncMutex);
                 if (tasksCompleted == taskIDCounter) {
-                    syncCv->notify_all();
+                    syncCv->notify_one();
                 }
             }
 
@@ -212,7 +212,6 @@ void TaskSystemParallelThreadPoolSleeping::runningThreads() {
                     std::unique_lock<std::mutex> notReadyLock(*notReadyMutex);
                     notReady.erase(dep);  // Remove from `notReady`
                 }
-                std::unique_lock<std::mutex> subTaskLock(*readyQueueMutex);
                 addSubTasksQueue(dep);  // Add to `readyQueue`
             }
         }
@@ -231,7 +230,10 @@ void TaskSystemParallelThreadPoolSleeping::addSubTasksQueue(TaskID curTaskID) {
 
     for (int i = 0; i < bulkTasks[curTaskID]->numTotalTasks; i++) {
         newSubTask.subTaskID = i;
-        readyQueue.push(newSubTask);
+        {
+            std::unique_lock<std::mutex> subTaskLock(*readyQueueMutex);
+            readyQueue.push(newSubTask);
+        }
     }
     readyQueueCv->notify_all();
 }
@@ -262,7 +264,6 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
     }
 
     if (numDependenciesTask == 0) {
-        std::unique_lock<std::mutex> subTaskLock(*readyQueueMutex);
         addSubTasksQueue(curTaskID);
     } else {
         std::lock_guard<std::mutex> lock(*notReadyMutex);
